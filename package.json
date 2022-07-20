@@ -1,0 +1,13 @@
+{
+  "name": "ethers-basic",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.14.49",
+    "typescript": "^4.7.4"
+  },
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --outfile=dist/out.js"
+  }
+}
