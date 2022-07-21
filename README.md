@@ -1,5 +1,11 @@
 example of how to do eip712 verification in postgres via ethers + plv8.
 
+Load env vars:
+```
+dotenv allow
+```
+
+
 Load in postgres:
 ```
 ./gen_sql_plv8_functions.sh | psql -h db.ajewkstjnorcwlczewie.supabase.co -p 5432 -d postgres -U postgres
