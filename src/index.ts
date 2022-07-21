@@ -16,7 +16,7 @@ export async function signMessage(signer: ethers.Signer & TypedDataSigner, messa
 
 
 async function main() {
-    const message = 'hello';
+    const message = 'password.nonce';
     const privateKey = process.env.PRIVATE_KEY;
     const publicKey = process.env.PUB_KEY;
     if (!(!!privateKey && !!publicKey)) {
@@ -27,7 +27,7 @@ async function main() {
 
     const signer = wallet;
     const signature = await signMessage(signer, msg.createMessage((message)));
-    console.log('select update_user' + JSON.stringify([signature, publicKey, message]).replace(']', ')').replace('[', '(').replace(/"/g,"'") + ";")
+    console.log('select verifySignature' + JSON.stringify([signature, publicKey, message]).replace(']', ')').replace('[', '(').replace(/"/g,"'") + ";")
     const verified =  verifySignature(signature, publicKey, message);
     console.log(verified);
 }
