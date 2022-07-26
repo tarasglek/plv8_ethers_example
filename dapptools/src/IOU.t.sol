@@ -5,22 +5,6 @@ import "ds-test/test.sol";
 
 import "./IOU.sol";
 
-contract DapptoolsTest is DSTest {
-    Dapptools dapptools;
-
-    function setUp() public {
-        dapptools = new Dapptools();
-    }
-
-    function testFail_basic_sanity() public {
-        assertTrue(false);
-    }
-
-    function test_basic_sanity() public {
-        assertTrue(true);
-    }
-}
-
 
 contract ContractTest is DSTest {
     IOU iou;

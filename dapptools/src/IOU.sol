@@ -2,9 +2,6 @@
 pragma solidity ^0.8.6;
 import "@openzeppelin/contracts/token/ERC777/ERC777.sol";
 
-contract Dapptools {
-}
-
 
 // import "openzeppelin-contracts/contracts/access/Ownable.sol";
 
