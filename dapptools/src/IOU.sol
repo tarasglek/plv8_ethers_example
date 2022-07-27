@@ -2,7 +2,6 @@
 pragma solidity ^0.8.6;
 import "@openzeppelin/contracts/token/ERC777/ERC777.sol";
 
-
 // import "openzeppelin-contracts/contracts/access/Ownable.sol";
 
 contract IOU is ERC777 {
@@ -13,6 +12,6 @@ contract IOU is ERC777 {
         ERC777("Gold", "GLD", defaultOperators)
         
     {
-        _mint(msg.sender, initialSupply, "", "", false);
+        _mint(msg.sender, initialSupply, "", "", true);
     }
 }
