@@ -18,7 +18,7 @@ likewise when transferring loans between lenders, need to have receiver provide 
 /**
 * todo: set decimals to 0
 */
-contract IOU is ERC777, DSTest {
+contract IOU is DSTest {
 
     struct Loan {
         address borrower;
@@ -37,14 +37,9 @@ contract IOU is ERC777, DSTest {
     mapping (address => Account) private lenderMapping;
     mapping (address => Account) private borrowerMapping;
 
-    constructor(
-        uint256 initialSupply,
-        address[] memory defaultOperators
-    )
-        ERC777("Gold", "GLD", defaultOperators)
-
+    constructor()
     {
-        _mint(msg.sender, initialSupply, "", "", true);
+        // allLoans[0] is all zeroed out to make error-checking simpler
         allLoans.push();
     }
     
@@ -56,7 +51,7 @@ contract IOU is ERC777, DSTest {
         return borrowerMapping[borrower].totalAmount;
     }
 
-    function totalSupply() public override view returns (uint256) {
+    function totalSupply() public view returns (uint256) {
         return _totalSupply;
     }
 
@@ -84,8 +79,8 @@ contract IOU is ERC777, DSTest {
             loanIndex = allLoans.length;
             loan = allLoans.push();
             // This is needed for accounting. Emitting events and then tracking those externally would also work.
-            lenderAccount.counterparties.push(borrower);
-            borrowerAccount.counterparties.push(lender);
+            // lenderAccount.counterparties.push(borrower);
+            // borrowerAccount.counterparties.push(lender);
             
             lenderAccount.loans[borrower] = loanIndex;
             borrowerAccount.loans[lender] = loanIndex;
@@ -206,32 +201,29 @@ contract IOU_Test is PermissiveIERC777Recipient {
     }
 
     function testExample() public {
-        Borrower borrower = new Borrower();
-        Lender lender = new Lender();
+        address lender = address(0x1);
+        address borrower = address(0x2);
+        address borrower2 = address(0x3);
 
         // require(1 == 2, "aaa");
-        address[] memory defaultOperators = new address[](1);
-        defaultOperators[0] = address(this);
-        IOU iou;
-        iou = new IOU(10 * 1 ether, defaultOperators);
-        // iou.send(address(lender), 1 ether, "Send some ethers to lender");
-        // iou.operatorSend(address(lender), address(borrower), 1 ether, "", "");
-        // emit log_named_uint("balance lender", iou.balanceOf(address(lender)));
-        assertEq(iou.lenderTotalLent(address(lender)), 0);
-        assertEq(iou.borrowerTotalBorrowed(address(borrower)), 0);
+        IOU iou = new IOU();
+        // iou.send(lender, 1 ether, "Send some ethers to lender");
+        // iou.operatorSend(lender, borrower, 1 ether, "", "");
+        // emit log_named_uint("balance lender", iou.balanceOf(lender));
+        assertEq(iou.lenderTotalLent(lender), 0);
+        assertEq(iou.borrowerTotalBorrowed(borrower), 0);
         
-        iou.issueDebt(address(lender), address(borrower), 1);
-        assertEq(iou.lenderTotalLent(address(lender)), 1);
+        iou.issueDebt(lender, borrower, 1);
+        assertEq(iou.lenderTotalLent(lender), 1);
 
-        iou.issueDebt(address(lender), address(borrower), 1);
-        assertEq(iou.lenderTotalLent(address(lender)), 2);
-        assertEq(iou.borrowerTotalBorrowed(address(borrower)), 2);
+        iou.issueDebt(lender, borrower, 1);
+        assertEq(iou.lenderTotalLent(lender), 2);
+        assertEq(iou.borrowerTotalBorrowed(borrower), 2);
 
-        address borrower2 = address(0x1);
-        iou.issueDebt(address(lender), borrower2, 1);
-        assertEq(iou.lenderTotalLent(address(lender)), 3);
-        assertEq(iou.borrowerTotalBorrowed(address(borrower)), 2);
-        assertEq(iou.borrowerTotalBorrowed(address(borrower2)), 1);
+        iou.issueDebt(lender, borrower2, 1);
+        assertEq(iou.lenderTotalLent(lender), 3);
+        assertEq(iou.borrowerTotalBorrowed(borrower), 2);
+        assertEq(iou.borrowerTotalBorrowed(borrower2), 1);
 
         assertEq(iou.totalSupply(), 3);
 
