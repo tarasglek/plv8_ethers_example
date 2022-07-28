@@ -32,9 +32,10 @@ contract IOU is ERC777, DSTest {
         mapping (address => uint256) loans;
         uint256 totalAmount;
     }
-    uint256 private _totalLent = 0;
+    uint256 private _totalSupply = 0;
 
     mapping (address => Account) private lenderMapping;
+    mapping (address => Account) private borrowerMapping;
 
     constructor(
         uint256 initialSupply,
@@ -51,8 +52,12 @@ contract IOU is ERC777, DSTest {
         return lenderMapping[lender].totalAmount;
     }
 
-    function totalLent(address lender) public view returns (uint256) {
-        return _totalLent;
+    function borrowerTotalBorrowed(address borrower) public view returns (uint256) {
+        return borrowerMapping[borrower].totalAmount;
+    }
+
+    function totalSupply() public override view returns (uint256) {
+        return _totalSupply;
     }
 
 
@@ -68,27 +73,37 @@ contract IOU is ERC777, DSTest {
     ) public {
         require(amount > 0, "amount must be greater than 0");
         require(borrower != lender, "Can't lend to yourself");
+
         Account storage lenderAccount = lenderMapping[lender];
-        uint256 loanIndex = lenderAccount.loans[borrower];
+        Account storage borrowerAccount = borrowerMapping[borrower];
+
         Loan storage loan;
+        uint256 loanIndex = lenderAccount.loans[borrower];
+        // loanIndex == 0 means this is a new loan, so track it for both lender and borrower
         if (loanIndex == 0) {
             loanIndex = allLoans.length;
             loan = allLoans.push();
             // This is needed for accounting. Emitting events and then tracking those externally would also work.
             lenderAccount.counterparties.push(borrower);
+            borrowerAccount.counterparties.push(lender);
+            
             lenderAccount.loans[borrower] = loanIndex;
+            borrowerAccount.loans[lender] = loanIndex;
+
             loan.borrower = borrower;
             loan.lender = lender;
         } else {
             loan = allLoans[loanIndex];
         }
-        uint256 newAmount = loan.amount + amount;
-        uint256 newTotalAmountForBorrower = lenderAccount.totalAmount + amount;
-        uint256 newTotalAmount = _totalLent + amount;
-        require(newAmount > loan.amount && newTotalAmountForBorrower > lenderAccount.totalAmount && newTotalAmount > _totalLent, "Overflow");
-        loan.amount = newAmount;
-        lenderAccount.totalAmount = newTotalAmountForBorrower;
-        _totalLent = newTotalAmount;
+        uint256 newLoanAmount = loan.amount + amount;
+        uint256 newTotalAmountForLender = lenderAccount.totalAmount + amount;
+        uint256 newTotalAmountForBorrower = borrowerAccount.totalAmount + amount;
+        uint256 newTotalAmount = _totalSupply + amount;
+        require(newLoanAmount > loan.amount && newTotalAmountForLender > lenderAccount.totalAmount && newTotalAmount > _totalSupply && newTotalAmountForBorrower > borrowerAccount.totalAmount, "Overflow");
+        loan.amount = newLoanAmount;
+        lenderAccount.totalAmount = newTotalAmountForLender;
+        borrowerAccount.totalAmount = newTotalAmountForBorrower;
+        _totalSupply = newTotalAmount;
     }
 
     /*
@@ -203,12 +218,22 @@ contract IOU_Test is PermissiveIERC777Recipient {
         // iou.operatorSend(address(lender), address(borrower), 1 ether, "", "");
         // emit log_named_uint("balance lender", iou.balanceOf(address(lender)));
         assertEq(iou.lenderTotalLent(address(lender)), 0);
+        assertEq(iou.borrowerTotalBorrowed(address(borrower)), 0);
+        
         iou.issueDebt(address(lender), address(borrower), 1);
         assertEq(iou.lenderTotalLent(address(lender)), 1);
+
         iou.issueDebt(address(lender), address(borrower), 1);
         assertEq(iou.lenderTotalLent(address(lender)), 2);
-        iou.issueDebt(address(lender), address(0x1), 1);
+        assertEq(iou.borrowerTotalBorrowed(address(borrower)), 2);
+
+        address borrower2 = address(0x1);
+        iou.issueDebt(address(lender), borrower2, 1);
         assertEq(iou.lenderTotalLent(address(lender)), 3);
+        assertEq(iou.borrowerTotalBorrowed(address(borrower)), 2);
+        assertEq(iou.borrowerTotalBorrowed(address(borrower2)), 1);
+
+        assertEq(iou.totalSupply(), 3);
 
     }
 }
