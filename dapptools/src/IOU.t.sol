@@ -15,9 +15,109 @@ Need to do 2-stage transfers by signing a message with borrower..such that it wo
 likewise when transferring loans between lenders, need to have receiver provide a signed authorization
 
 */
-
-
+/**
+* todo: set decimals to 0
 */
+contract IOU is ERC777, DSTest {
+
+    struct Loan {
+        address borrower;
+        address lender;
+        uint256 amount;
+    }
+    Loan[] private allLoans;
+
+    struct Account {
+        address[] counterparties;
+        mapping (address => uint256) loans;
+        uint256 totalAmount;
+    }
+    uint256 private _totalLent = 0;
+
+    mapping (address => Account) private lenderMapping;
+
+    constructor(
+        uint256 initialSupply,
+        address[] memory defaultOperators
+    )
+        ERC777("Gold", "GLD", defaultOperators)
+
+    {
+        _mint(msg.sender, initialSupply, "", "", true);
+        allLoans.push();
+    }
+    
+    function lenderTotalLent(address lender) public view returns (uint256) {
+        return lenderMapping[lender].totalAmount;
+    }
+
+    function totalLent(address lender) public view returns (uint256) {
+        return _totalLent;
+    }
+
+
+    /**
+     * Issue debt and transfer it to borrower.
+     * TODO: require signatures from borrower and lender. Or just one from borrower and have lender issue the debt.
+    * TODO: require to not overlow
+     */
+    function issueDebt(
+        address lender,
+        address borrower,
+        uint256 amount
+    ) public {
+        require(amount > 0, "amount must be greater than 0");
+        require(borrower != lender, "Can't lend to yourself");
+        Account storage lenderAccount = lenderMapping[lender];
+        uint256 loanIndex = lenderAccount.loans[borrower];
+        Loan storage loan;
+        if (loanIndex == 0) {
+            loanIndex = allLoans.length;
+            loan = allLoans.push();
+            // This is needed for accounting. Emitting events and then tracking those externally would also work.
+            lenderAccount.counterparties.push(borrower);
+            lenderAccount.loans[borrower] = loanIndex;
+            loan.borrower = borrower;
+            loan.lender = lender;
+        } else {
+            loan = allLoans[loanIndex];
+        }
+        uint256 newAmount = loan.amount + amount;
+        uint256 newTotalAmountForBorrower = lenderAccount.totalAmount + amount;
+        uint256 newTotalAmount = _totalLent + amount;
+        require(newAmount > loan.amount && newTotalAmountForBorrower > lenderAccount.totalAmount && newTotalAmount > _totalLent, "Overflow");
+        loan.amount = newAmount;
+        lenderAccount.totalAmount = newTotalAmountForBorrower;
+        _totalLent = newTotalAmount;
+    }
+
+    /*
+    TODO: require to not overlow
+    */
+    function transferDebt(
+        address origLender,
+        address newLender,
+        address borrower,
+        uint256 amount
+    ) public {
+        require(amount > 0, "amount must be greater than 0");
+        require(origLender != newLender, "Can't transfer to yourself");
+        
+        // bytes32 origLoan = keccak256(abi.encode(origLender, borrower));
+        // bytes32 newLoan = keccak256(abi.encode(newLender, borrower));
+        // uint256 outStanding = borrowedAmount[origLoan];
+        // require(outStanding >= amount, "Not enough debt");
+        // borrowedAmount[origLoan] = outStanding - amount;
+        // uint256 oldLoanAmount = borrowedAmount[newLoan];
+        // uint256 newLoanAmount = oldLoanAmount + amount;
+        // require(newLoanAmount > oldLoanAmount, "Overflow");
+        // borrowedAmount[newLoan] = newLoanAmount;
+        //  += amount;
+
+    }
+
+}
+
 contract PermissiveIERC777Recipient is DSTest, IERC777Recipient {
     string _name;
     IERC1820Registry constant internal _ERC1820_REGISTRY = IERC1820Registry(0x1820a4B7618BdE71Dce8cdc73aAB6C95905faD24);
@@ -99,10 +199,17 @@ contract IOU_Test is PermissiveIERC777Recipient {
         defaultOperators[0] = address(this);
         IOU iou;
         iou = new IOU(10 * 1 ether, defaultOperators);
-        iou.send(address(lender), 1 ether, "Send some ethers to lender");
-        iou.operatorSend(address(lender), address(borrower), 1 ether, "", "");
-        emit log_named_uint("balance lender", iou.balanceOf(address(lender)));
-        assertTrue(true);
+        // iou.send(address(lender), 1 ether, "Send some ethers to lender");
+        // iou.operatorSend(address(lender), address(borrower), 1 ether, "", "");
+        // emit log_named_uint("balance lender", iou.balanceOf(address(lender)));
+        assertEq(iou.lenderTotalLent(address(lender)), 0);
+        iou.issueDebt(address(lender), address(borrower), 1);
+        assertEq(iou.lenderTotalLent(address(lender)), 1);
+        iou.issueDebt(address(lender), address(borrower), 1);
+        assertEq(iou.lenderTotalLent(address(lender)), 2);
+        iou.issueDebt(address(lender), address(0x1), 1);
+        assertEq(iou.lenderTotalLent(address(lender)), 3);
+
     }
 }
 
