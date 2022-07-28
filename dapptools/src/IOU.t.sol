@@ -42,13 +42,17 @@ contract IOU is DSTest {
         // allLoans[0] is all zeroed out to make error-checking simpler
         allLoans.push();
     }
-    
+
     function lenderTotalLent(address lender) public view returns (uint256) {
         return lenderMapping[lender].totalAmount;
     }
 
     function borrowerTotalBorrowed(address borrower) public view returns (uint256) {
         return borrowerMapping[borrower].totalAmount;
+    }
+
+    function balanceBorrowed(address lender, address borrower) public view returns (uint256) {
+        return allLoans[borrowerMapping[borrower].loans[lender]].amount;
     }
 
     function totalSupply() public view returns (uint256) {
@@ -59,7 +63,6 @@ contract IOU is DSTest {
     /**
      * Issue debt and transfer it to borrower.
      * TODO: require signatures from borrower and lender. Or just one from borrower and have lender issue the debt.
-    * TODO: require to not overlow
      */
     function issueDebt(
         address lender,
@@ -81,7 +84,7 @@ contract IOU is DSTest {
             // This is needed for accounting. Emitting events and then tracking those externally would also work.
             // lenderAccount.counterparties.push(borrower);
             // borrowerAccount.counterparties.push(lender);
-            
+
             lenderAccount.loans[borrower] = loanIndex;
             borrowerAccount.loans[lender] = loanIndex;
 
@@ -102,7 +105,8 @@ contract IOU is DSTest {
     }
 
     /*
-    TODO: require to not overlow
+    * 1) this can be optimized when borrowed amount == amount transferred
+    * 2) also an interesting case when newLender owes borrower.
     */
     function transferDebt(
         address origLender,
@@ -110,22 +114,30 @@ contract IOU is DSTest {
         address borrower,
         uint256 amount
     ) public {
-        require(amount > 0, "amount must be greater than 0");
-        require(origLender != newLender, "Can't transfer to yourself");
-        
-        // bytes32 origLoan = keccak256(abi.encode(origLender, borrower));
-        // bytes32 newLoan = keccak256(abi.encode(newLender, borrower));
-        // uint256 outStanding = borrowedAmount[origLoan];
-        // require(outStanding >= amount, "Not enough debt");
-        // borrowedAmount[origLoan] = outStanding - amount;
-        // uint256 oldLoanAmount = borrowedAmount[newLoan];
-        // uint256 newLoanAmount = oldLoanAmount + amount;
-        // require(newLoanAmount > oldLoanAmount, "Overflow");
-        // borrowedAmount[newLoan] = newLoanAmount;
-        //  += amount;
-
+        require(origLender != newLender && newLender != borrower, "Can't transfer to yourself");
+        issueDebt(newLender, borrower, amount);
+        paydownDebt(origLender, borrower, amount);
     }
 
+    function paydownDebt(address lender, address borrower, uint256 amount) public {
+        Account storage lenderAccount = lenderMapping[lender];
+
+        // update loan
+        uint256 loanIndex = lenderAccount.loans[borrower];
+        require(loanIndex != 0, "No loan found");
+        Loan storage origLoan = allLoans[loanIndex];
+        require(origLoan.amount >= amount, "Not enough debt");
+        origLoan.amount -= amount;
+
+        //update lender totalAmount
+        require(lenderAccount.totalAmount >= amount, "This shouldn't happen after above check passes");
+        lenderAccount.totalAmount = lenderAccount.totalAmount - amount;
+
+        //update borrower totalAmount
+        Account storage borrowerAccount = borrowerMapping[borrower];
+        require(borrowerAccount.totalAmount >= amount, "This shouldn't happen after above checks pass");
+        borrowerAccount.totalAmount = borrowerAccount.totalAmount - amount;
+    }
 }
 
 contract PermissiveIERC777Recipient is DSTest, IERC777Recipient {
@@ -185,6 +197,10 @@ contract Lender is PermissiveIERC777Recipient {
 }
 
 contract IOU_Test is PermissiveIERC777Recipient {
+    address lender = address(0x1);
+    address borrower = address(0x2);
+    address borrower2 = address(0x3);
+    address lender2 = address(0x4);
 
     constructor()
         PermissiveIERC777Recipient("IOU_Test")
@@ -200,33 +216,87 @@ contract IOU_Test is PermissiveIERC777Recipient {
 
     }
 
-    function testExample() public {
-        address lender = address(0x1);
-        address borrower = address(0x2);
-        address borrower2 = address(0x3);
-
-        // require(1 == 2, "aaa");
+    function _testIOU_issueDebt(uint104 amount) public {
         IOU iou = new IOU();
-        // iou.send(lender, 1 ether, "Send some ethers to lender");
-        // iou.operatorSend(lender, borrower, 1 ether, "", "");
-        // emit log_named_uint("balance lender", iou.balanceOf(lender));
+
         assertEq(iou.lenderTotalLent(lender), 0);
         assertEq(iou.borrowerTotalBorrowed(borrower), 0);
-        
-        iou.issueDebt(lender, borrower, 1);
-        assertEq(iou.lenderTotalLent(lender), 1);
 
-        iou.issueDebt(lender, borrower, 1);
-        assertEq(iou.lenderTotalLent(lender), 2);
-        assertEq(iou.borrowerTotalBorrowed(borrower), 2);
+        iou.issueDebt(lender, borrower, 1 * amount);
+        assertEq(iou.lenderTotalLent(lender), 1 * amount);
+        assertEq(iou.balanceBorrowed(lender, borrower), 1 * amount);
+        assertEq(iou.balanceBorrowed(borrower, lender), 0);
 
-        iou.issueDebt(lender, borrower2, 1);
-        assertEq(iou.lenderTotalLent(lender), 3);
-        assertEq(iou.borrowerTotalBorrowed(borrower), 2);
-        assertEq(iou.borrowerTotalBorrowed(borrower2), 1);
+        iou.issueDebt(lender, borrower, 1 * amount);
+        assertEq(iou.lenderTotalLent(lender), 2 * amount);
+        assertEq(iou.borrowerTotalBorrowed(borrower), 2 * amount);
 
-        assertEq(iou.totalSupply(), 3);
+        iou.issueDebt(lender, borrower2, 1 * amount);
+        assertEq(iou.lenderTotalLent(lender), 3 * amount);
+        assertEq(iou.borrowerTotalBorrowed(borrower), 2 * amount);
+        assertEq(iou.borrowerTotalBorrowed(borrower2), 1 * amount);
+
+        assertEq(iou.totalSupply(), 3 * amount);
+    }
+
+    function testIOU_issueDebt() public {
+        // test with large amount
+        _testIOU_issueDebt(0x0c9c754cd0b5e8c091eee27f2);
+        // test small amount
+        _testIOU_issueDebt(1);
+    }
+
+    function testIOU_paydownDebt() public {
+        uint32 amount = 1;
+        IOU iou = new IOU();
+
+        iou.issueDebt(lender, borrower, 2 * amount);
+        assertEq(iou.lenderTotalLent(lender), 2 * amount);
+        assertEq(iou.borrowerTotalBorrowed(borrower), 2 * amount);
+
+        iou.paydownDebt(lender, borrower, 1 * amount);
+        assertEq(iou.lenderTotalLent(lender), 1 * amount);
+        assertEq(iou.borrowerTotalBorrowed(borrower), 1 * amount);
+
+
+        iou.paydownDebt(lender, borrower, 1 * amount);
+        assertEq(iou.lenderTotalLent(lender), 0);
+        assertEq(iou.borrowerTotalBorrowed(borrower), 0);
 
     }
+
+    function testIOU_transferDebt() public {
+        uint32 amount = 1;
+        IOU iou = new IOU();
+
+        // issue 2 units of debt from borrower to lender
+        iou.issueDebt(lender, borrower, 2 * amount);
+        assertEq(iou.lenderTotalLent(lender), 2 * amount);
+        assertEq(iou.borrowerTotalBorrowed(borrower), 2 * amount);
+
+        // transfer half of debt lender->lender2
+        iou.transferDebt(lender, lender2, borrower, amount);
+        assertEq(iou.lenderTotalLent(lender), 1 * amount);
+        assertEq(iou.borrowerTotalBorrowed(borrower), 2 * amount);
+
+
+        // paydown the transferred half
+        iou.paydownDebt(lender2, borrower, amount);
+        assertEq(iou.lenderTotalLent(lender2), 0);
+
+        // lender2 borrows from borrower(opposite of 2nd block)
+        iou.issueDebt(borrower, lender2, amount);
+        emit log_named_uint("balance(borrower->lender2)=", iou.balanceBorrowed(borrower, lender2));
+
+        assertEq(iou.borrowerTotalBorrowed(lender2), amount);
+        //and transfers that loan to lender1..this should cancel out borrower's loan against lender
+        iou.transferDebt(borrower, lender, lender2, amount);
+        emit log_named_uint("balance(lender->borrowed)=", iou.balanceBorrowed(lender, borrower));
+        emit log_named_uint("balance(borrowed->lender)=", iou.balanceBorrowed(borrower, lender));
+
+        // iou.paydownDebt(lender, borrower, 1 * amount);
+        // assertEq(iou.lenderTotalLent(lender), 0);
+    }
+
 }
 
