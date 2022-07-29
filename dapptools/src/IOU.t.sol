@@ -138,6 +138,13 @@ contract IOU is DSTest {
         require(borrowerAccount.totalAmount >= amount, "This shouldn't happen after above checks pass");
         borrowerAccount.totalAmount = borrowerAccount.totalAmount - amount;
     }
+
+    function paydownDebtWithDebt(address lender, address borrower, address subBorrower, uint256 amount) public {
+        require(balanceBorrowed(lender, borrower) >= amount, "Not enough debt");
+        require(balanceBorrowed(borrower, subBorrower) >= amount, "Not enough debt");
+        paydownDebt(lender, borrower, amount);
+        transferDebt(borrower, lender, subBorrower, amount);
+    }
 }
 
 contract PermissiveIERC777Recipient is DSTest, IERC777Recipient {
@@ -278,24 +285,28 @@ contract IOU_Test is PermissiveIERC777Recipient {
         iou.transferDebt(lender, lender2, borrower, amount);
         assertEq(iou.lenderTotalLent(lender), 1 * amount);
         assertEq(iou.borrowerTotalBorrowed(borrower), 2 * amount);
+    }
 
 
-        // paydown the transferred half
-        iou.paydownDebt(lender2, borrower, amount);
-        assertEq(iou.lenderTotalLent(lender2), 0);
+    function testIOU_complicated_transferDebt(/*uint32 amountFuzz*/) public {
+        uint72 amount = /*amountFuzz +*/ 1;
+        IOU iou = new IOU();
 
-        // lender2 borrows from borrower(opposite of 2nd block)
-        iou.issueDebt(borrower, lender2, amount);
-        emit log_named_uint("balance(borrower->lender2)=", iou.balanceBorrowed(borrower, lender2));
+        uint160 i = 1;
+        address Joe = address(i++);
+        address Bob = address(i++);
+        address Carl = address(i++);
+        iou.issueDebt(Joe, Bob, 2 * amount);
+        iou.issueDebt(Bob, Carl, 1 * amount);
+        emit log_named_uint("balance(Joe lent Bob)=", iou.balanceBorrowed(Joe, Bob));
+        emit log_named_uint("balance(Bob lent Carl)=", iou.balanceBorrowed(Bob, Carl));
+        emit log_named_uint("balance(Joe lent Carl)=", iou.balanceBorrowed(Joe, Carl));
+        iou.paydownDebtWithDebt(Joe, Bob, Carl, 1 * amount);
+        emit log_string("After payment via Carl's debt from Bob to Joe:");
+        emit log_named_uint("balance(Joe lent Bob)=", iou.balanceBorrowed(Joe, Bob));
+        emit log_named_uint("balance(Bob lent Carl)=", iou.balanceBorrowed(Bob, Carl));
+        emit log_named_uint("balance(Joe lent Carl)=", iou.balanceBorrowed(Joe, Carl));
 
-        assertEq(iou.borrowerTotalBorrowed(lender2), amount);
-        //and transfers that loan to lender1..this should cancel out borrower's loan against lender
-        iou.transferDebt(borrower, lender, lender2, amount);
-        emit log_named_uint("balance(lender->borrowed)=", iou.balanceBorrowed(lender, borrower));
-        emit log_named_uint("balance(borrowed->lender)=", iou.balanceBorrowed(borrower, lender));
-
-        // iou.paydownDebt(lender, borrower, 1 * amount);
-        // assertEq(iou.lenderTotalLent(lender), 0);
     }
 
 }
